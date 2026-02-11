@@ -1,7 +1,7 @@
 name: Build ImGui for Android
 
 on:
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
   push:
     branches: [ "master", "main" ]
 
@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. Checkout the ImGui repository
       - name: Checkout ImGui
         uses: actions/checkout@v4
         with:
@@ -19,13 +18,7 @@ jobs:
           ref: master
           path: imgui
 
-      # 2. Setup the Android NDK explicitly to ensure environment variables like ANDROID_NDK_HOME are set
-      - name: Setup Android NDK
-        uses: android-actions/setup-ndk@v3
-        with:
-          ndk-version: r26d
-
-      # 3. Generate a CMakeLists.txt because ImGui doesn't provide one for building a static lib
+      # We skip the external setup-ndk action and use the pre-installed version
       - name: Generate CMakeLists.txt
         working-directory: imgui
         run: |
@@ -33,7 +26,6 @@ jobs:
           cmake_minimum_required(VERSION 3.10)
           project(imgui_android CXX)
 
-          # Add the core ImGui sources
           set(IMGUI_SOURCES
               imgui.cpp
               imgui_demo.cpp
@@ -45,35 +37,28 @@ jobs:
           )
 
           add_library(imgui STATIC \${IMGUI_SOURCES})
-
-          # Include directories for core and backends
           target_include_directories(imgui PUBLIC . backends)
 
-          # Find Android system libraries required by the backends
           find_library(android-lib android)
           find_library(log-lib log)
-          
-          # Link against Android native libs, EGL, and GLESv2 (Standard for ImGui on Android)
           target_link_libraries(imgui \${android-lib} \${log-lib} EGL GLESv2)
           EOF
 
-      # 4. Configure CMake using the Android Toolchain
       - name: Configure CMake
         working-directory: imgui
         run: |
+          # Use the pre-installed NDK path provided by the runner environment
           cmake -B build \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
             -DANDROID_ABI=arm64-v8a \
             -DANDROID_PLATFORM=android-24 \
             -DANDROID_STL=c++_static \
             -DCMAKE_BUILD_TYPE=Release
 
-      # 5. Build the library
       - name: Build
         working-directory: imgui
-        run: cmake --build build --verbose
+        run: cmake --build build --config Release
 
-      # 6. Upload the resulting static library (.a) as an artifact
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
